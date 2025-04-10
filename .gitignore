@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Data files (could be large)
+# Uncomment if you don't want to include data files
+# data/raw/
+# data/processed/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Tensorflow model files (can be large)
+# Uncomment if you don't want to include model files
+# models/*.h5
+# models/*.keras
+# models/*.pb 
