@@ -1,6 +1,6 @@
 # Sign Language Detection System using Machine Learning
 
-A comprehensive Python-based machine learning system for detecting and recognizing sign language gestures in real-time using computer vision and deep learning. This system is capable of handling both single-handed and two-handed gestures.
+A system that detects and interprets sign language gestures using machine learning techniques.
 
 ## Overview
 
