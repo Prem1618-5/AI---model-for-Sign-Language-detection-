@@ -34,13 +34,21 @@ class GestureDataProcessor:
             processed_dir (str): Directory to save processed data
             random_seed (int): Random seed for reproducibility
         """
-        self.data_dir = data_dir
-        self.processed_dir = processed_dir
+        if data_dir == '../data/raw' and os.path.exists('data/raw'):
+            self.data_dir = 'data/raw'
+        else:
+            self.data_dir = data_dir
+            
+        if processed_dir == '../data/processed' and (os.path.exists('data/processed') or os.path.exists('data')):
+            self.processed_dir = 'data/processed'
+        else:
+            self.processed_dir = processed_dir
+            
         self.random_seed = random_seed
         self.label_encoder = LabelEncoder()
         
         # Create processed directory if it doesn't exist
-        os.makedirs(processed_dir, exist_ok=True)
+        os.makedirs(self.processed_dir, exist_ok=True)
     
     def load_gesture_data(self, file_pattern='*.json'):
         """
@@ -231,11 +239,21 @@ class GestureDataProcessor:
                 if is_two_handed:
                     # Two-handed format: sample is a list of hands
                     if len(sample) == 1:
-                        # Only one hand was detected - normalize and flatten it
+                        # Only one hand was detected - normalize, flatten, and pad to 126 features
                         normalized = self.normalize_landmarks(sample[0])
                         flattened = self.flatten_landmarks(normalized)
-                        X.append(flattened)
+                        padded = np.concatenate([flattened, np.zeros(63)])
+                        X.append(padded)
                         y.append(label)
+                        
+                        # If augmenting, create augmented versions
+                        if augment:
+                            augmented_hand_sets = self.augment_landmarks(normalized)
+                            for aug_hand in augmented_hand_sets:
+                                flat_aug_hand = self.flatten_landmarks(aug_hand)
+                                padded_aug = np.concatenate([flat_aug_hand, np.zeros(63)])
+                                X.append(padded_aug)
+                                y.append(label)
                     elif len(sample) == 2:
                         # Both hands were detected - normalize and combine them
                         normalized_hand1 = self.normalize_landmarks(sample[0])
@@ -360,7 +378,7 @@ class GestureDataProcessor:
         Returns:
             tuple: (X_train, y_train, X_val, y_val, X_test, y_test, class_names, is_two_handed)
         """
-        processed_file = os.path.join(self.processed_dir, 'processed_data.npz')
+        processed_file = os.path.join(self.processed_dir, 'processed_gesture_data.npz')
         
         if not os.path.exists(processed_file):
             raise FileNotFoundError(f"Processed data file not found: {processed_file}")
@@ -374,7 +392,7 @@ class GestureDataProcessor:
         y_val = data['y_val']
         X_test = data['X_test']
         y_test = data['y_test']
-        class_names = data['class_names']
+        class_names = list(data['class_names'])
         
         # Check if this is a two-handed dataset
         is_two_handed = bool(data.get('is_two_handed', False))

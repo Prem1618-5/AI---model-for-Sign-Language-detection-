@@ -39,7 +39,10 @@ class GestureModelTrainer:
             model_dir (str): Directory to save trained models
             random_seed (int): Random seed for reproducibility
         """
-        self.model_dir = model_dir
+        if model_dir == '../models' and os.path.exists('models'):
+            self.model_dir = 'models'
+        else:
+            self.model_dir = model_dir
         self.model = None
         self.history = None
         self.class_names = []
@@ -241,7 +244,7 @@ class GestureModelTrainer:
         # Save model metadata
         metadata = {
             'model_type': model_type,
-            'class_names': self.class_names,
+            'class_names': self.class_names.tolist() if hasattr(self.class_names, 'tolist') else list(self.class_names),
             'input_shape': self.input_shape[0] if self.input_shape else None,
             'num_classes': len(self.class_names),
             'timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
