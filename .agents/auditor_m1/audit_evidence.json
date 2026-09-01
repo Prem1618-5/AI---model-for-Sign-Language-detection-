@@ -1,0 +1,127 @@
+{
+  "ast_checks": {
+    "parse_ast_data_preprocessing.py": {
+      "passed": true,
+      "details": "AST parsed successfully"
+    },
+    "forbidden_imports_data_preprocessing.py": {
+      "passed": true,
+      "details": "No forbidden imports"
+    },
+    "facade_functions_data_preprocessing.py": {
+      "passed": true,
+      "details": "No facade functions"
+    },
+    "parse_ast_main.py": {
+      "passed": true,
+      "details": "AST parsed successfully"
+    },
+    "forbidden_imports_main.py": {
+      "passed": true,
+      "details": "No forbidden imports"
+    },
+    "facade_functions_main.py": {
+      "passed": true,
+      "details": "No facade functions"
+    },
+    "parse_ast_data_collection.py": {
+      "passed": true,
+      "details": "AST parsed successfully"
+    },
+    "forbidden_imports_data_collection.py": {
+      "passed": true,
+      "details": "No forbidden imports"
+    },
+    "facade_functions_data_collection.py": {
+      "passed": true,
+      "details": "No facade functions"
+    },
+    "parse_ast_camera_test.py": {
+      "passed": true,
+      "details": "AST parsed successfully"
+    },
+    "forbidden_imports_camera_test.py": {
+      "passed": true,
+      "details": "No forbidden imports"
+    },
+    "facade_functions_camera_test.py": {
+      "passed": true,
+      "details": "No facade functions"
+    }
+  },
+  "math_invariants": {
+    "palm_center_is_origin": {
+      "passed": true,
+      "details": "Palm center residual norm: 1.11e-16"
+    },
+    "unit_scale_reference": {
+      "passed": true,
+      "details": "Distance ||P9 - P0||: 1.000000"
+    },
+    "translation_invariance": {
+      "passed": true,
+      "details": "Max coordinate difference under translation: 1.74e-14"
+    },
+    "scale_invariance": {
+      "passed": true,
+      "details": "Max coordinate difference under scaling: 6.66e-16"
+    },
+    "zero_division_guard": {
+      "passed": true,
+      "details": "Normalized degenerate hand without NaN/Inf"
+    }
+  },
+  "parser_checks": {
+    "empty_sample": {
+      "passed": true,
+      "details": "Output: []"
+    },
+    "single_flat_sample": {
+      "passed": true,
+      "details": "Normalized 21 dicts to 1 hand of 21 dicts: shape=(1, 21)"
+    },
+    "single_nested_sample": {
+      "passed": true,
+      "details": "Preserved 1-hand nested list: shape=(1, 21)"
+    },
+    "two_nested_sample": {
+      "passed": true,
+      "details": "Preserved 2-hand nested list: shape=(2, 21)"
+    }
+  },
+  "dependency_checks": {
+    "pandas_removed_from_requirements": {
+      "passed": true,
+      "details": "pandas in requirements.txt: False"
+    },
+    "seaborn_removed_from_requirements": {
+      "passed": true,
+      "details": "seaborn in requirements.txt: False"
+    }
+  },
+  "execution_checks": {
+    "cli_main_help": {
+      "passed": true,
+      "details": "Exit code: 0"
+    },
+    "camera_test_execution": {
+      "passed": true,
+      "details": "Exit code: 0, Output: Testing camera access (device index: 0)...\nCamera opened successfully: 640x480 (3 channels) at devic"
+    }
+  },
+  "unit_tests": {
+    "tier_1_tests": {
+      "passed": true,
+      "details": "Exit code: 0"
+    },
+    "tier_3_tests": {
+      "passed": true,
+      "details": "Exit code: 0"
+    },
+    "tier_4_tests": {
+      "passed": true,
+      "details": "Exit code: 0"
+    }
+  },
+  "overall_clean": true
+}

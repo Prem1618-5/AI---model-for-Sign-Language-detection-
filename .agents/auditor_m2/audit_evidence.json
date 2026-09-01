@@ -1,0 +1,12 @@
+{
+  "temporal_filter_ast_clean": "True",
+  "ema_exact_math": "True",
+  "hysteresis_state_machine": "True",
+  "velocity_gating": "True",
+  "neural_weights_evaluated_genuinely": "True",
+  "split_before_augmentation_in_ast": "True",
+  "zero_data_leakage": "True",
+  "seaborn_removed_from_requirements": "True",
+  "pandas_removed_from_requirements": "True",
+  "prohibited_imports_in_src": "[]"
+}

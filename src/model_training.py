@@ -13,7 +13,6 @@ import tensorflow as tf
 from tensorflow.keras import layers, models, optimizers, callbacks
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
-import seaborn as sns
 
 from data_preprocessing import GestureDataProcessor
 
@@ -107,6 +106,12 @@ class GestureModelTrainer:
     def build_lstm_model(self, input_shape, num_classes):
         """
         Build an LSTM-based model for sequential gesture recognition.
+        
+        # ponytail: Static-snapshot ceiling: This architecture reshapes static single-frame features (D,)
+        # into sequence shape (1, D) (sequence length T=1), meaning recurrent state transitions are
+        # computed once per sample with zero inter-frame temporal context.
+        # Upgrade path: Upgrade data collection to record continuous T-frame sliding windows
+        # (e.g. 30 frames @ 30 FPS -> shape (B, 30, D)) for true dynamic sequence modeling.
         
         Args:
             input_shape (tuple): Shape of input features
@@ -312,8 +317,9 @@ class GestureModelTrainer:
         print("Evaluating model on test data...")
         test_loss, test_accuracy = self.model.evaluate(X_test, y_test, verbose=1)
         
-        # Make predictions
-        y_pred_prob = self.model.predict(X_test)
+        # Make predictions via direct tensor execution
+        tensor_in = tf.convert_to_tensor(X_test, dtype=tf.float32)
+        y_pred_prob = self.model(tensor_in, training=False).numpy()
         y_pred = np.argmax(y_pred_prob, axis=1)
         
         # Generate classification report
@@ -343,7 +349,7 @@ class GestureModelTrainer:
     
     def plot_confusion_matrix(self, y_true, y_pred):
         """
-        Plot confusion matrix for model evaluation.
+        Plot confusion matrix for model evaluation using pure matplotlib (no seaborn).
         
         Args:
             y_true (numpy.ndarray): True labels
@@ -351,20 +357,35 @@ class GestureModelTrainer:
         """
         # Create confusion matrix
         cm = confusion_matrix(y_true, y_pred)
+        num_classes = cm.shape[0]
         
-        # Plot
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
-                   xticklabels=self.class_names,
-                   yticklabels=self.class_names)
-        plt.xlabel('Predicted')
-        plt.ylabel('True')
-        plt.title('Confusion Matrix')
+        # Plot using pure matplotlib
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+        fig.colorbar(im, ax=ax)
         
-        # Save the plot
+        tick_marks = np.arange(num_classes)
+        labels = self.class_names if (self.class_names and len(self.class_names) == num_classes) else [str(i) for i in tick_marks]
+        ax.set(xticks=tick_marks, yticks=tick_marks,
+               xticklabels=labels, yticklabels=labels,
+               title='Confusion Matrix',
+               ylabel='True label',
+               xlabel='Predicted label')
+        
+        plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+        
+        # Annotate cell counts
+        thresh = cm.max() / 2.0 if cm.max() > 0 else 1.0
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], 'd'),
+                        ha="center", va="center",
+                        color="white" if cm[i, j] > thresh else "black")
+        
+        fig.tight_layout()
         cm_path = os.path.join(self.model_dir, 'confusion_matrix.png')
-        plt.savefig(cm_path)
-        plt.close()
+        plt.savefig(cm_path, dpi=150)
+        plt.close(fig)
         
         print(f"Confusion matrix saved to {cm_path}")
     
@@ -407,7 +428,7 @@ class GestureModelTrainer:
     
     def predict(self, landmarks):
         """
-        Make a prediction for a single set of landmarks.
+        Make a prediction for a single set of landmarks using direct tensor evaluation.
         
         Args:
             landmarks (list or numpy.ndarray): Hand landmark features
@@ -420,20 +441,21 @@ class GestureModelTrainer:
         
         # Ensure landmarks are the right shape
         if isinstance(landmarks, list):
-            features = np.array(landmarks)
+            features = np.array(landmarks, dtype=np.float32)
         else:
-            features = landmarks
+            features = np.asarray(landmarks, dtype=np.float32)
         
         # Reshape for model input if needed
-        if len(features.shape) == 1:
+        if features.ndim == 1:
             features = features.reshape(1, -1)
         
-        # Make prediction
-        prediction = self.model.predict(features)[0]
+        # Direct tensor inference (avoids slow Keras predict graph overhead)
+        tensor_in = tf.convert_to_tensor(features, dtype=tf.float32)
+        prediction = self.model(tensor_in, training=False).numpy()[0]
         
         # Get the top prediction
-        predicted_class_idx = np.argmax(prediction)
-        confidence = prediction[predicted_class_idx]
+        predicted_class_idx = int(np.argmax(prediction))
+        confidence = float(prediction[predicted_class_idx])
         
         # Get class name
         if self.class_names and predicted_class_idx < len(self.class_names):
@@ -441,16 +463,44 @@ class GestureModelTrainer:
         else:
             predicted_class = str(predicted_class_idx)
         
-        return predicted_class, float(confidence)
+        return predicted_class, confidence
+
+    def predict_proba(self, landmarks):
+        """
+        Direct tensor inference returning full softmax probability distribution.
+        
+        Args:
+            landmarks (list or numpy.ndarray): Hand landmark features (single vector or batch)
+            
+        Returns:
+            numpy.ndarray: Softmax probabilities (1D array for single sample, 2D for batch)
+        """
+        if self.model is None:
+            raise ValueError("No model for prediction. Train or load a model first.")
+        
+        if isinstance(landmarks, list):
+            features = np.array(landmarks, dtype=np.float32)
+        else:
+            features = np.asarray(landmarks, dtype=np.float32)
+        
+        is_single = (features.ndim == 1)
+        if is_single:
+            features = features.reshape(1, -1)
+        
+        tensor_in = tf.convert_to_tensor(features, dtype=tf.float32)
+        probs = self.model(tensor_in, training=False).numpy()
+        
+        return probs[0] if is_single else probs
 
 if __name__ == "__main__":
     # Example usage
     # Load processed data
     data_processor = GestureDataProcessor()
     
+    is_two_handed = False
     try:
         # Try to load processed data
-        X_train, y_train, X_val, y_val, X_test, y_test, class_names = data_processor.load_processed_data()
+        X_train, y_train, X_val, y_val, X_test, y_test, class_names, is_two_handed = data_processor.load_processed_data()
         print("Loaded processed data successfully.")
     except FileNotFoundError:
         # Process raw data if processed data doesn't exist
@@ -463,7 +513,8 @@ if __name__ == "__main__":
     # Train the model
     history = trainer.train(
         X_train, y_train, X_val, y_val, class_names,
-        epochs=50, batch_size=32, model_type='dense'
+        epochs=50, batch_size=32, model_type='dense',
+        is_two_handed=is_two_handed
     )
     
     # Evaluate the model

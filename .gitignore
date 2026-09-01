@@ -43,3 +43,6 @@ ENV/
 # models/*.h5
 # models/*.keras
 # models/*.pb 
+
+# Local module reference documentation
+MODULES_REFERENCE.md 

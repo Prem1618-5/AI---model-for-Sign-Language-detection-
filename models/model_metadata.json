@@ -1,0 +1,13 @@
+{
+  "model_type": "dense",
+  "class_names": [
+    "hello",
+    "no",
+    "thanks",
+    "yes"
+  ],
+  "input_shape": 126,
+  "num_classes": 4,
+  "timestamp": "2026-09-02 02:43:35",
+  "is_two_handed": true
+}

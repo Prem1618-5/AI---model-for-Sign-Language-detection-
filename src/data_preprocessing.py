@@ -9,10 +9,33 @@ import os
 import json
 import glob
 import numpy as np
-import pandas as pd
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+
+def parse_raw_sample(sample: list) -> list:
+    """
+    Normalizes any raw sample representation into a list of hands:
+    - Single hand flat: [ {x, y, z}, ... 21 dicts ] -> [ [ {x, y, z}, ... 21 dicts ] ]
+    - Multi-hand list: [ [ {x, y, z}, ... 21 dicts ], ... ] -> preserved as-is
+    
+    Args:
+        sample (list): Raw landmark data representing either a flat hand or list of hands.
+        
+    Returns:
+        list: Normalized list of hands, where each hand is a list of landmark dicts.
+    """
+    if not sample:
+        return []
+    if isinstance(sample[0], dict):
+        # Single hand flat list of 21 landmark dictionaries
+        return [sample]
+    elif isinstance(sample[0], (list, tuple)):
+        # Multi-hand list where each item is a list of landmark dicts
+        return [list(h) for h in sample if isinstance(h, (list, tuple)) and len(h) > 0]
+    return [sample]
+
 
 class GestureDataProcessor:
     """
@@ -25,30 +48,31 @@ class GestureDataProcessor:
         label_encoder (LabelEncoder): Encoder for gesture labels
     """
     
-    def __init__(self, data_dir='../data/raw', processed_dir='../data/processed', random_seed=42):
+    parse_raw_sample = staticmethod(parse_raw_sample)
+    
+    def __init__(self, data_dir='data/raw', processed_dir='data/processed', random_seed=42):
         """
         Initialize the GestureDataProcessor with specified parameters.
         
         Args:
             data_dir (str): Directory containing raw gesture data files
-            processed_dir (str): Directory to save processed data
+            processed_dir (str): Directory to save processed data or specific .npz file path
             random_seed (int): Random seed for reproducibility
         """
-        if data_dir == '../data/raw' and os.path.exists('data/raw'):
-            self.data_dir = 'data/raw'
-        else:
-            self.data_dir = data_dir
-            
-        if processed_dir == '../data/processed' and (os.path.exists('data/processed') or os.path.exists('data')):
-            self.processed_dir = 'data/processed'
-        else:
-            self.processed_dir = processed_dir
-            
+        self.data_dir = data_dir
         self.random_seed = random_seed
         self.label_encoder = LabelEncoder()
         
-        # Create processed directory if it doesn't exist
-        os.makedirs(self.processed_dir, exist_ok=True)
+        # Support passing either a directory or a specific .npz file path
+        if processed_dir.endswith('.npz'):
+            self.processed_file = processed_dir
+            self.processed_dir = os.path.dirname(processed_dir) or '.'
+        else:
+            self.processed_file = None
+            self.processed_dir = processed_dir
+            if os.path.exists(processed_dir) and not os.path.isdir(processed_dir):
+                raise FileExistsError(f"Target path '{processed_dir}' exists and is not a directory.")
+            os.makedirs(self.processed_dir, exist_ok=True)
     
     def load_gesture_data(self, file_pattern='*.json'):
         """
@@ -81,9 +105,15 @@ class GestureDataProcessor:
             gesture_name = data['gesture_name']
             landmarks = data['landmarks']
             
-            # Check if this is two-handed data format
-            if 'two_hands' in data and data['two_hands']:
+            # Check if this is two-handed data format from metadata or sample content
+            if data.get('two_hands', False):
                 is_two_handed = True
+            
+            for s in landmarks:
+                parsed = parse_raw_sample(s)
+                if len(parsed) >= 2:
+                    is_two_handed = True
+                    break
             
             if gesture_name not in gesture_data:
                 gesture_data[gesture_name] = []
@@ -206,10 +236,11 @@ class GestureDataProcessor:
     
     def prepare_dataset(self, augment=True, test_size=0.2, val_size=0.1):
         """
-        Prepare the full dataset for training, including normalization, augmentation, and train/val/test split.
+        Prepare the full dataset for training, including normalization, clean training-only
+        augmentation (zero test/val data leakage), and stratified train/val/test split.
         
         Args:
-            augment (bool): Whether to perform data augmentation
+            augment (bool): Whether to perform data augmentation on training set
             test_size (float): Proportion of data for testing
             val_size (float): Proportion of training data for validation
             
@@ -219,9 +250,6 @@ class GestureDataProcessor:
         # Load raw gesture data
         gesture_data, is_two_handed = self.load_gesture_data()
         
-        # Prepare lists for processed data
-        X = []
-        y = []
         class_names = list(gesture_data.keys())
         
         # Encode class labels
@@ -230,107 +258,116 @@ class GestureDataProcessor:
         
         print("Processing and normalizing landmarks...")
         
-        # Process each gesture
+        # Collect raw samples and unaugmented features
+        raw_samples = []  # list of dicts with hands, label, features
+        
         for gesture_name, samples in tqdm(gesture_data.items(), desc="Processing gestures"):
             label = label_dict[gesture_name]
             
-            # Process each sample
             for sample in samples:
+                hands = parse_raw_sample(sample)
+                if not hands:
+                    continue
+                
                 if is_two_handed:
-                    # Two-handed format: sample is a list of hands
-                    if len(sample) == 1:
-                        # Only one hand was detected - normalize, flatten, and pad to 126 features
-                        normalized = self.normalize_landmarks(sample[0])
+                    if len(hands) == 1:
+                        normalized = self.normalize_landmarks(hands[0])
                         flattened = self.flatten_landmarks(normalized)
-                        padded = np.concatenate([flattened, np.zeros(63)])
-                        X.append(padded)
-                        y.append(label)
-                        
-                        # If augmenting, create augmented versions
-                        if augment:
-                            augmented_hand_sets = self.augment_landmarks(normalized)
-                            for aug_hand in augmented_hand_sets:
-                                flat_aug_hand = self.flatten_landmarks(aug_hand)
-                                padded_aug = np.concatenate([flat_aug_hand, np.zeros(63)])
-                                X.append(padded_aug)
-                                y.append(label)
-                    elif len(sample) == 2:
-                        # Both hands were detected - normalize and combine them
-                        normalized_hand1 = self.normalize_landmarks(sample[0])
-                        normalized_hand2 = self.normalize_landmarks(sample[1])
-                        
-                        # Flatten each hand separately then concatenate
+                        features = np.concatenate([flattened, np.zeros(63)])
+                    else:
+                        normalized_hand1 = self.normalize_landmarks(hands[0])
+                        normalized_hand2 = self.normalize_landmarks(hands[1])
                         flattened_hand1 = self.flatten_landmarks(normalized_hand1)
                         flattened_hand2 = self.flatten_landmarks(normalized_hand2)
-                        
-                        # Combine features from both hands
-                        combined_features = np.concatenate([flattened_hand1, flattened_hand2])
-                        X.append(combined_features)
-                        y.append(label)
-                        
-                        # If augmenting, create augmented versions
-                        if augment:
-                            # Augment each hand separately
-                            augmented_hand1_sets = self.augment_landmarks(normalized_hand1)
-                            augmented_hand2_sets = self.augment_landmarks(normalized_hand2)
-                            
-                            # Combine augmented hands (match them randomly)
-                            for i in range(min(len(augmented_hand1_sets), len(augmented_hand2_sets))):
-                                aug_hand1 = augmented_hand1_sets[i]
-                                aug_hand2 = augmented_hand2_sets[i]
-                                
-                                flat_aug_hand1 = self.flatten_landmarks(aug_hand1)
-                                flat_aug_hand2 = self.flatten_landmarks(aug_hand2)
-                                
-                                combined_aug = np.concatenate([flat_aug_hand1, flat_aug_hand2])
-                                X.append(combined_aug)
-                                y.append(label)
+                        features = np.concatenate([flattened_hand1, flattened_hand2])
                 else:
-                    # Single-handed format (original)
-                    # Normalize landmarks
-                    normalized = self.normalize_landmarks(sample)
-                    
-                    # Flatten to feature vector
-                    flattened = self.flatten_landmarks(normalized)
-                    X.append(flattened)
-                    y.append(label)
-                    
-                    # If augmenting, create augmented versions
-                    if augment:
-                        augmented_sets = self.augment_landmarks(normalized)
-                        for aug_sample in augmented_sets:
-                            X.append(self.flatten_landmarks(aug_sample))
-                            y.append(label)
+                    normalized = self.normalize_landmarks(hands[0])
+                    features = self.flatten_landmarks(normalized)
+                
+                raw_samples.append({
+                    'hands': hands,
+                    'label': label,
+                    'features': features
+                })
         
-        # Convert to numpy arrays
-        X = np.array(X)
-        y = np.array(y)
+        if not raw_samples:
+            raise ValueError("No valid landmark samples found in dataset.")
         
-        print(f"Processed dataset: {X.shape[0]} samples, {X.shape[1]} features")
+        X_all = np.array([s['features'] for s in raw_samples])
+        y_all = np.array([s['label'] for s in raw_samples])
+        indices = np.arange(len(raw_samples))
+        
+        print(f"Base dataset: {X_all.shape[0]} samples, {X_all.shape[1]} features")
         if is_two_handed:
-            print(f"Using two-handed features with {X.shape[1]} dimensions")
+            print(f"Using two-handed features with {X_all.shape[1]} dimensions")
         
-        # Split into train+val and test sets
-        X_trainval, X_test, y_trainval, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=self.random_seed, stratify=y
+        # Split unaugmented indices to guarantee zero data leakage into val and test
+        idx_trainval, idx_test, y_trainval, y_test = train_test_split(
+            indices, y_all, test_size=test_size, random_state=self.random_seed, stratify=y_all
         )
         
-        # Split train+val into train and val sets
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_trainval, y_trainval, 
-            test_size=val_size/(1-test_size),  # Adjust val_size to be relative to train+val
+        idx_train, idx_val, y_train_base, y_val = train_test_split(
+            idx_trainval, y_trainval,
+            test_size=val_size / (1.0 - test_size),
             random_state=self.random_seed,
             stratify=y_trainval
         )
         
-        print(f"Train set: {X_train.shape[0]} samples")
-        print(f"Validation set: {X_val.shape[0]} samples")
-        print(f"Test set: {X_test.shape[0]} samples")
+        X_test = X_all[idx_test]
+        X_val = X_all[idx_val]
+        
+        # Build training set with augmentation applied ONLY to training indices
+        X_train_list = []
+        y_train_list = []
+        
+        for idx in idx_train:
+            item = raw_samples[idx]
+            hands = item['hands']
+            label = item['label']
+            base_features = item['features']
+            
+            X_train_list.append(base_features)
+            y_train_list.append(label)
+            
+            if augment:
+                if is_two_handed:
+                    if len(hands) == 1:
+                        normalized = self.normalize_landmarks(hands[0])
+                        augmented_hand_sets = self.augment_landmarks(normalized)
+                        for aug_hand in augmented_hand_sets:
+                            flat_aug = self.flatten_landmarks(aug_hand)
+                            padded_aug = np.concatenate([flat_aug, np.zeros(63)])
+                            X_train_list.append(padded_aug)
+                            y_train_list.append(label)
+                    else:
+                        normalized_hand1 = self.normalize_landmarks(hands[0])
+                        normalized_hand2 = self.normalize_landmarks(hands[1])
+                        aug_sets1 = self.augment_landmarks(normalized_hand1)
+                        aug_sets2 = self.augment_landmarks(normalized_hand2)
+                        for i in range(min(len(aug_sets1), len(aug_sets2))):
+                            flat1 = self.flatten_landmarks(aug_sets1[i])
+                            flat2 = self.flatten_landmarks(aug_sets2[i])
+                            combined_aug = np.concatenate([flat1, flat2])
+                            X_train_list.append(combined_aug)
+                            y_train_list.append(label)
+                else:
+                    normalized = self.normalize_landmarks(hands[0])
+                    augmented_sets = self.augment_landmarks(normalized)
+                    for aug_sample in augmented_sets:
+                        X_train_list.append(self.flatten_landmarks(aug_sample))
+                        y_train_list.append(label)
+        
+        X_train = np.array(X_train_list)
+        y_train = np.array(y_train_list)
+        
+        print(f"Train set: {X_train.shape[0]} samples (augmented={augment})")
+        print(f"Validation set: {X_val.shape[0]} samples (clean, unaugmented)")
+        print(f"Test set: {X_test.shape[0]} samples (clean, unaugmented)")
         
         # Save processed data
         metadata = {
             'is_two_handed': is_two_handed,
-            'feature_dim': X.shape[1]
+            'feature_dim': X_train.shape[1]
         }
         self.save_processed_data(X_train, y_train, X_val, y_val, X_test, y_test, class_names, metadata)
         
@@ -371,20 +408,23 @@ class GestureDataProcessor:
         
         print(f"Saved processed data to {self.processed_dir}")
     
-    def load_processed_data(self):
+    def load_processed_data(self, processed_file=None):
         """
         Load processed dataset from disk.
         
+        Args:
+            processed_file (str, optional): Explicit path to .npz file
+            
         Returns:
             tuple: (X_train, y_train, X_val, y_val, X_test, y_test, class_names, is_two_handed)
         """
-        processed_file = os.path.join(self.processed_dir, 'processed_gesture_data.npz')
+        target_file = processed_file or self.processed_file or os.path.join(self.processed_dir, 'processed_gesture_data.npz')
         
-        if not os.path.exists(processed_file):
-            raise FileNotFoundError(f"Processed data file not found: {processed_file}")
+        if not os.path.exists(target_file):
+            raise FileNotFoundError(f"Processed data file not found: {target_file}")
         
         # Load data from npz file
-        data = np.load(processed_file, allow_pickle=True)
+        data = np.load(target_file, allow_pickle=True)
         
         X_train = data['X_train']
         y_train = data['y_train']
