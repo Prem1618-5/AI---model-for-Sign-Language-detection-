@@ -44,5 +44,10 @@ ENV/
 # models/*.keras
 # models/*.pb 
 
-# Local module reference documentation
-MODULES_REFERENCE.md 
+# AI Agents and generated artifacts
+.agents/
+
+# Ignore all markdown files except README
+*.md
+!README.md
+!**/README.md
