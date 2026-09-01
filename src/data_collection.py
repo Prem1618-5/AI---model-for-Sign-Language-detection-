@@ -12,7 +12,6 @@ import json
 import numpy as np
 import mediapipe as mp
 from datetime import datetime
-from tqdm import tqdm
 
 class DataCollector:
     """
@@ -29,7 +28,7 @@ class DataCollector:
     """
     
     def __init__(self, 
-                 output_dir=r'D:\Programs\Cursor.ai\Sign Language detection system using AI\sign_language_ml\data\raw',
+                 output_dir='data/raw',
                  capture_delay=0.2,
                  min_detection_confidence=0.7,
                  min_tracking_confidence=0.5):
@@ -240,33 +239,6 @@ class DataCollector:
             time.sleep(1)
         
         return saved_files
-
-def extract_landmarks_from_file(filepath):
-    """
-    Extract landmark data from a saved JSON file.
-    
-    Args:
-        filepath (str): Path to the gesture data JSON file
-        
-    Returns:
-        tuple: (gesture_name, landmarks_array)
-    """
-    with open(filepath, 'r') as f:
-        data = json.load(f)
-    
-    gesture_name = data['gesture_name']
-    landmarks = data['landmarks']
-    
-    # Convert to numpy array for efficient processing
-    landmarks_array = np.array([
-        [
-            [point['x'], point['y'], point['z']] 
-            for point in sample
-        ] 
-        for sample in landmarks
-    ])
-    
-    return gesture_name, landmarks_array
 
 if __name__ == "__main__":
     # Example usage

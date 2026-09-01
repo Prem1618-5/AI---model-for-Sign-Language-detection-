@@ -9,6 +9,15 @@ import os
 import argparse
 import sys
 
+# Ensure project root and src directory are in sys.path
+_SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.dirname(_SRC_DIR)
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+
 def main():
     """
     Main function that parses command line arguments and runs the appropriate module.
@@ -27,17 +36,17 @@ def main():
                                help='Names of gestures to collect (e.g. hello thank_you)')
     collect_parser.add_argument('--samples', type=int, default=50,
                                help='Number of samples to collect per gesture (default: 50)')
-    collect_parser.add_argument('--output', type=str, default='../data/raw',
-                               help='Output directory for collected data (default: ../data/raw)')
+    collect_parser.add_argument('--output', type=str, default='data/raw',
+                               help='Output directory for collected data (default: data/raw)')
     
     # Data preprocessing command
     preprocess_parser = subparsers.add_parser('preprocess', help='Preprocess collected data')
     preprocess_parser.add_argument('--augment', action='store_true',
                                  help='Perform data augmentation')
-    preprocess_parser.add_argument('--input', type=str, default='../data/raw',
-                                 help='Input directory containing raw data (default: ../data/raw)')
-    preprocess_parser.add_argument('--output', type=str, default='../data/processed',
-                                 help='Output directory for processed data (default: ../data/processed)')
+    preprocess_parser.add_argument('--input', type=str, default='data/raw',
+                                 help='Input directory containing raw data (default: data/raw)')
+    preprocess_parser.add_argument('--output', type=str, default='data/processed',
+                                 help='Output directory for processed data (default: data/processed)')
     
     # Model training command
     train_parser = subparsers.add_parser('train', help='Train gesture recognition model')
@@ -47,22 +56,22 @@ def main():
                             help='Number of training epochs (default: 50)')
     train_parser.add_argument('--batch-size', type=int, default=32,
                             help='Training batch size (default: 32)')
-    train_parser.add_argument('--data', type=str, default='../data/processed',
-                            help='Directory containing processed data (default: ../data/processed)')
-    train_parser.add_argument('--output', type=str, default='../models',
-                            help='Output directory for trained model (default: ../models)')
+    train_parser.add_argument('--data', type=str, default='data/processed',
+                            help='Directory containing processed data (default: data/processed)')
+    train_parser.add_argument('--output', type=str, default='models',
+                            help='Output directory for trained model (default: models)')
     
     # Model evaluation command
     eval_parser = subparsers.add_parser('evaluate', help='Evaluate trained model')
     eval_parser.add_argument('--model', type=str, default=None,
-                           help='Path to trained model (default: latest in ../models)')
-    eval_parser.add_argument('--data', type=str, default='../data/processed',
-                           help='Directory containing processed data (default: ../data/processed)')
+                           help='Path to trained model (default: latest in models)')
+    eval_parser.add_argument('--data', type=str, default='data/processed',
+                           help='Directory containing processed data (default: data/processed)')
     
     # Real-time recognition command
     recognition_parser = subparsers.add_parser('recognize', help='Run real-time recognition')
     recognition_parser.add_argument('--model', type=str, default=None,
-                                  help='Path to trained model (default: latest in ../models)')
+                                  help='Path to trained model (default: latest in models)')
     recognition_parser.add_argument('--camera', type=int, default=0,
                                   help='Camera device ID (default: 0)')
     recognition_parser.add_argument('--threshold', type=float, default=0.7,
@@ -82,37 +91,44 @@ def main():
     if args.command == 'collect':
         from data_collection import DataCollector
         
-        # Create list of gesture configs
-        gestures = [{'name': name, 'samples': args.samples} for name in args.gestures]
-        
-        # Create data collector and collect data
-        collector = DataCollector(output_dir=args.output)
-        saved_files = collector.collect_multiple_gestures(gestures)
-        
-        print(f"\nData collection completed!")
-        print(f"Collected data for {len(saved_files)} gestures:")
-        for gesture in args.gestures:
-            print(f"  - {gesture}")
-        print(f"Data saved to {args.output}")
+        try:
+            # Create list of gesture configs
+            gestures = [{'name': name, 'samples': args.samples} for name in args.gestures]
+            
+            # Create data collector and collect data
+            collector = DataCollector(output_dir=args.output)
+            saved_files = collector.collect_multiple_gestures(gestures)
+            
+            print(f"\nData collection completed!")
+            print(f"Collected data for {len(saved_files)} gestures:")
+            for gesture in args.gestures:
+                print(f"  - {gesture}")
+            print(f"Data saved to {args.output}")
+        except Exception as e:
+            print(f"Error during data collection: {e}")
+            return
     
     elif args.command == 'preprocess':
         from data_preprocessing import GestureDataProcessor
         
-        # Create data processor and process data
-        processor = GestureDataProcessor(
-            data_dir=args.input,
-            processed_dir=args.output
-        )
-        
-        X_train, y_train, X_val, y_val, X_test, y_test, class_names = processor.prepare_dataset(
-            augment=args.augment
-        )
-        
-        print("\nData preprocessing completed!")
-        print(f"Processed data saved to {args.output}")
+        try:
+            # Create data processor and process data
+            processor = GestureDataProcessor(
+                data_dir=args.input,
+                processed_dir=args.output
+            )
+            
+            X_train, y_train, X_val, y_val, X_test, y_test, class_names = processor.prepare_dataset(
+                augment=args.augment
+            )
+            
+            print("\nData preprocessing completed!")
+            print(f"Processed data saved to {args.output}")
+        except (ValueError, FileNotFoundError) as e:
+            print(f"Error during preprocessing: {e}")
+            return
     
     elif args.command == 'train':
-        from model_training import GestureModelTrainer
         from data_preprocessing import GestureDataProcessor
         
         # Load processed data
@@ -122,6 +138,7 @@ def main():
             # Load processed data
             X_train, y_train, X_val, y_val, X_test, y_test, class_names, is_two_handed = processor.load_processed_data()
             
+            from model_training import GestureModelTrainer
             # Create model trainer and train model
             trainer = GestureModelTrainer(model_dir=args.output)
             
@@ -144,7 +161,6 @@ def main():
             return
     
     elif args.command == 'evaluate':
-        from model_training import GestureModelTrainer
         from data_preprocessing import GestureDataProcessor
         
         # Load processed data
@@ -154,6 +170,7 @@ def main():
             # Load processed data
             X_train, y_train, X_val, y_val, X_test, y_test, class_names, is_two_handed = processor.load_processed_data()
             
+            from model_training import GestureModelTrainer
             # Create model trainer and load model
             trainer = GestureModelTrainer()
             trainer.load_model(args.model)

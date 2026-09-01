@@ -43,3 +43,11 @@ ENV/
 # models/*.h5
 # models/*.keras
 # models/*.pb 
+
+# AI Agents and generated artifacts
+.agents/
+
+# Ignore all markdown files except the root project README
+*.md
+!/README.md
+
