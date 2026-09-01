@@ -47,7 +47,7 @@ ENV/
 # AI Agents and generated artifacts
 .agents/
 
-# Ignore all markdown files except README
+# Ignore all markdown files except the root project README
 *.md
-!README.md
-!**/README.md
+!/README.md
+
